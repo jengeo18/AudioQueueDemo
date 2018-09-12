@@ -165,6 +165,10 @@ void audioInputBufferCallback(
     setMagicCookieForFile(_aqData.mQueue, _aqData.mAudioFile);
 }
 
+
+/**
+ 默认20ms数据，采样率16k单通道双字节pcm格式每帧大概640byte数据（小于或等于）
+ */
 - (void) _setupAQBuffer {
     deriveBufferSize(_aqData.mQueue,
                      _aqData.mDataFormat,
