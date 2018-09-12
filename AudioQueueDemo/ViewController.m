@@ -88,6 +88,7 @@
 - (NSString*) filePath {
     if (!_filePath) {
         _filePath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject stringByAppendingPathComponent:@"123.aiff"];
+        //_filePath = [[NSBundle mainBundle] pathForResource:@"test.mp3" ofType:@"mp3"];
     }
     return _filePath;
 }
