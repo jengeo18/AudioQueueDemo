@@ -9,16 +9,20 @@
 #import "ViewController.h"
 #import "AQRecorder.h"
 #import "AQPlayer.h"
+#import "AQ_Header.h"
+#import "AQDataCache.h"
 
-@interface ViewController () {
+
+@interface ViewController () <AQRecorderDelegate, AQPlayerDelegate>{
     dispatch_queue_t _playAudioQueue;
 }
 
 @property (nonatomic, strong) AQRecorder *recorder;
 @property (nonatomic, strong) AQPlayer *player;
-@property (nonatomic, strong) UIButton *startOrStopRecordBtn;
-@property (nonatomic, strong) UIButton *startOrStopPlayBtn;
+@property (nonatomic, strong) UIButton *startPCMRecordBtn;
+@property (nonatomic, strong) UIButton *startPCMPlayBtn;
 @property (nonatomic, strong) NSString *filePath;
+@property (nonatomic, strong) AQDataCache *audioCache;
 
 @end
 
@@ -28,7 +32,8 @@
     [super viewDidLoad];
     
     [self _setupViews];
-    _playAudioQueue = dispatch_queue_create("top.jengeo.app.AudioQueueDemo", DISPATCH_QUEUE_SERIAL);
+    [self _setupDatas];
+    
 }
 
 - (void)didReceiveMemoryWarning {
@@ -36,58 +41,78 @@
 }
 
 - (void)_setupViews {
+
+    _startPCMRecordBtn = [self _createButtonWithFrame:CGRectMake(100, 100, 150, 40)
+                                          normalTitle:@"开始录制PCM"
+                                        selectedTitle:@"停止录制PCM"
+                                        disabledTitle:@"已停止录制PCM"
+                                             selector:@selector(_startRecordPCM)];
+     [self.view addSubview:_startPCMRecordBtn];
     
-    _startOrStopRecordBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-    [_startOrStopRecordBtn addTarget:self action:@selector(_startRecordAction) forControlEvents:UIControlEventTouchUpInside];
-    [_startOrStopRecordBtn setTitle:@"开始录制" forState:UIControlStateNormal];
-    [_startOrStopRecordBtn setTitle:@"停止录制" forState:UIControlStateSelected];
-    [_startOrStopRecordBtn setTitle:@"已停止录制" forState:UIControlStateDisabled];
-    _startOrStopRecordBtn.frame = CGRectMake(100, 100, 100, 40);
-    [_startOrStopRecordBtn setTitleColor:[UIColor blueColor] forState:UIControlStateNormal];
-    [_startOrStopRecordBtn setTitleColor:[UIColor grayColor] forState:UIControlStateDisabled];
-    [self.view addSubview:_startOrStopRecordBtn];
-    
-    _startOrStopPlayBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-    [_startOrStopPlayBtn addTarget:self action:@selector(_startPlayAction) forControlEvents:UIControlEventTouchUpInside];
-    [_startOrStopPlayBtn setTitle:@"开始播放" forState:UIControlStateNormal];
-    [_startOrStopPlayBtn setTitle:@"停止播放" forState:UIControlStateSelected];
-    [_startOrStopPlayBtn setTitle:@"已停止播放" forState:UIControlStateDisabled];
-    _startOrStopPlayBtn.frame = CGRectMake(100, 160, 100, 40);
-    [_startOrStopPlayBtn setTitleColor:[UIColor grayColor] forState:UIControlStateDisabled];
-    [_startOrStopPlayBtn setTitleColor:[UIColor blueColor] forState:UIControlStateNormal];
-    [self.view addSubview:_startOrStopPlayBtn];
+    _startPCMPlayBtn = [self _createButtonWithFrame:CGRectMake(100, 160, 150, 40)
+                                        normalTitle:@"开始播放PCM"
+                                      selectedTitle:@"停止播放PCM"
+                                      disabledTitle:@"已停止播放PCM"
+                                           selector:@selector(_startPlayPCM)];
+    [self.view addSubview:_startPCMPlayBtn];
 }
 
-- (void)_startRecordAction {
-    if (_startOrStopRecordBtn.isSelected) {
+- (UIButton*)_createButtonWithFrame: (CGRect)frame
+                   normalTitle: (NSString*)normalTitle
+                 selectedTitle: (NSString*)selectedTitle
+                 disabledTitle: (NSString*)disableTitle
+                      selector: (SEL)selector {
+    UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
+    btn.frame = frame;
+    [btn addTarget:self action:selector forControlEvents:UIControlEventTouchUpInside];
+    [btn setTitle: normalTitle forState:UIControlStateNormal];
+    [btn setTitle: selectedTitle forState:UIControlStateSelected];
+    [btn setTitle: disableTitle forState:UIControlStateDisabled];
+    [btn setTitleColor:[UIColor grayColor] forState:UIControlStateDisabled];
+    [btn setTitleColor:[UIColor blueColor] forState:UIControlStateNormal];
+    [btn setTitleColor:[UIColor grayColor] forState:UIControlStateDisabled];
+    [btn setTitleColor:[UIColor blueColor] forState:UIControlStateNormal];
+    return btn;
+}
+
+
+- (void)_setupDatas {
+    _playAudioQueue = dispatch_queue_create("top.jengeo.app.AudioQueueDemo.AudioPlay", DISPATCH_QUEUE_SERIAL);
+    _audioCache = [[AQDataCache alloc] init];
+}
+
+- (void)_startRecordPCM {
+    if (_startPCMRecordBtn.isSelected) {
         [self.recorder stopRecord];
-        _startOrStopRecordBtn.selected = NO;
-        [_startOrStopRecordBtn setEnabled:NO];
+        _startPCMRecordBtn.selected = NO;
+        [_startPCMRecordBtn setEnabled:NO];
     }
     else {
         [self.recorder startRecord];
-        _startOrStopRecordBtn.selected = YES;
+        _startPCMRecordBtn.selected = YES;
     }
 }
 
-- (void)_startPlayAction {
-    if (_startOrStopPlayBtn.isSelected) {
+- (void)_startPlayPCM {
+    if (_startPCMPlayBtn.isSelected) {
         [self.player stopPlay];
-        _startOrStopPlayBtn.selected = NO;
-        [_startOrStopPlayBtn setEnabled:NO];
+        _startPCMPlayBtn.selected = NO;
+        [_startPCMPlayBtn setEnabled:NO];
     }
     else {
         dispatch_async(_playAudioQueue, ^{
             [self.player startPlay];
         });
-        _startOrStopPlayBtn.selected = YES;
+       
+        _startPCMPlayBtn.selected = YES;
     }
 }
 
+#pragma mark - getters
 
 - (NSString*) filePath {
     if (!_filePath) {
-        _filePath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject stringByAppendingPathComponent:@"123.aiff"];
+        _filePath = defaultFilePath;
         //_filePath = [[NSBundle mainBundle] pathForResource:@"test.mp3" ofType:@"mp3"];
     }
     return _filePath;
@@ -95,16 +120,9 @@
 
 - (AQRecorder *)recorder {
     if (!_recorder) {
-        AudioStreamBasicDescription defaultDesc;
-        defaultDesc.mFormatID = kAudioFormatLinearPCM;
-        defaultDesc.mSampleRate = 16000;
-        defaultDesc.mChannelsPerFrame = 1;
-        defaultDesc.mBitsPerChannel = 16;
-        defaultDesc.mBytesPerPacket = defaultDesc.mChannelsPerFrame * defaultDesc.mBitsPerChannel / 8;
-        defaultDesc.mBytesPerFrame = defaultDesc.mBytesPerPacket;
-        defaultDesc.mFramesPerPacket = 1;
-        defaultDesc.mFormatFlags = kLinearPCMFormatFlagIsBigEndian | kLinearPCMFormatFlagIsSignedInteger | kLinearPCMFormatFlagIsPacked;
-        _recorder = [[AQRecorder alloc] initWithRecordDataFormat:defaultDesc withFilePath:self.filePath];
+        //_recorder = [[AQRecorder alloc] initWithFilePath:defaultFilePath];
+        _recorder = [[AQRecorder alloc] init];
+        _recorder.delegate = self;
     }
     
     return _recorder;
@@ -112,9 +130,32 @@
 
 - (AQPlayer*)player {
     if (!_player) {
-        _player = [[AQPlayer alloc] initWithFilePath:self.filePath];
+       //_player = [[AQPlayer alloc] initWithFilePath:defaultFilePath];
+        _player = [[AQPlayer alloc] init];
+        _player.delegate = self;
     }
     return _player;
 }
+
+#pragma mark - AQRecorderDelegate
+
+- (void)recordAudioData: (NSData*)data {
+    [_audioCache pushData:data];
+}
+
+
+- (void)playWithAudioBuffer: (AudioQueueBufferRef)buffer {
+    NSData *data = [_audioCache popData];
+    memset(buffer->mAudioData, 0, buffer->mAudioDataByteSize);
+    if (data && data.length ) {
+        UInt32 len = (UInt32)data.length;
+        buffer->mAudioDataByteSize = len;
+        memcpy(buffer->mAudioData, data.bytes, len);
+    }
+    else {
+        buffer->mAudioDataByteSize = 0;
+    }
+}
+
 
 @end

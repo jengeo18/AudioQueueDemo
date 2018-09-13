@@ -7,10 +7,15 @@
 //
 
 #import "AQPlayer.h"
-#import <AudioToolbox/AudioToolbox.h>
 #import "AQ_Header.h"
+#import <AVFoundation/AVFoundation.h>
 
 static const int kNumberBuffers = 3;
+
+typedef enum PlayWithType {
+    PlayWithFile,  //文件播放
+    PlayWithMemory //内存或从流中读取的Data
+} PlayWithType;
 
 typedef struct AQPlayerState {
     AudioStreamBasicDescription mDataFormat;
@@ -24,38 +29,6 @@ typedef struct AQPlayerState {
     bool mIsRunning;
 } AQPlayerState;
 
-void outputBufferCallback(
-    void *inUserData,
-    AudioQueueRef inAQ,
-    AudioQueueBufferRef inBuffer){
-    
-    AQPlayerState *pAqData = inUserData;
-    if (pAqData->mIsRunning == 0) {
-        return;
-    }
-    UInt32 numPackets = pAqData->mNumPacketsToRead;
-    UInt32 bufferSize = pAqData->bufferByteSize;
-    AudioFileReadPacketData(pAqData->mAudioFile,
-                            false,
-                            &bufferSize,
-                            pAqData->mPacketDesc,
-                            pAqData->mCurrentPacket,
-                            &numPackets,
-                            inBuffer->mAudioData);
-
-    if (numPackets == 0) {
-        AudioQueueStop(pAqData->mQueue, false);
-        pAqData->mIsRunning = false;
-    }
-    else {
-        inBuffer->mAudioDataByteSize = bufferSize;
-        AudioQueueEnqueueBuffer(pAqData->mQueue,
-                                inBuffer,
-                                pAqData->mPacketDesc ? numPackets : 0 ,
-                                pAqData->mPacketDesc);
-        pAqData->mCurrentPacket += numPackets;
-    }
-}
 
 void playerDeriveBufferSize(
     AudioStreamBasicDescription ASBDesc,
@@ -66,7 +39,7 @@ void playerDeriveBufferSize(
 ){
  
     static const int maxBufferSize = 0x50000;
-    static const int minBufferSize =  0x4000;
+    static const int minBufferSize =  0x200;
     
     if (ASBDesc.mFramesPerPacket != 0) {
         Float64 numPacketsForTime = ASBDesc.mSampleRate / ASBDesc.mFramesPerPacket * seconds;
@@ -89,15 +62,30 @@ void playerDeriveBufferSize(
 
 @interface AQPlayer() {
     AQPlayerState _aqData;
+    NSLock *_aqLock;
+    short _curBufferNo;
 }
+
+//播放文件路径
+@property (nonatomic, copy) NSString *filePath;
+@property (nonatomic, assign)AudioStreamBasicDescription streamBasicDesc;
+@property (nonatomic, assign) PlayWithType playWith;
 
 @end
 
 @implementation AQPlayer
 
 - (instancetype)init{
-    self = [super init];
-    return self;
+    AudioStreamBasicDescription defaultDesc;
+    defaultDesc.mFormatID = kAudioFormatLinearPCM;
+    defaultDesc.mSampleRate = 16000;
+    defaultDesc.mChannelsPerFrame = 1;
+    defaultDesc.mBitsPerChannel = 16;
+    defaultDesc.mBytesPerPacket = defaultDesc.mChannelsPerFrame * defaultDesc.mBitsPerChannel / 8;
+    defaultDesc.mBytesPerFrame = defaultDesc.mBytesPerPacket;
+    defaultDesc.mFramesPerPacket = 1;
+    defaultDesc.mFormatFlags = kLinearPCMFormatFlagIsBigEndian | kLinearPCMFormatFlagIsSignedInteger | kLinearPCMFormatFlagIsPacked;
+    return [self initWithDataFormat: defaultDesc];
 }
 
 - (instancetype) initWithFilePath: (NSString*)filePath {
@@ -108,14 +96,18 @@ void playerDeriveBufferSize(
     return self;
 }
 
-- (void)setFilePath:(NSString *)filePath {
-    _filePath = filePath;
-    [self _doSetup];
+- (instancetype) initWithDataFormat: (AudioStreamBasicDescription)streamBasicDesc {
+    if (self = [super init]) {
+        _streamBasicDesc = streamBasicDesc;
+        [self _doSetup];
+    }
+    
+    return self;
 }
 
 
 - (void)_doSetup {
-    NSAssert(_filePath, @"filePath  error: nil");
+
     _aqData.mIsRunning = true;
     
     [self _setupAudioFileURL];
@@ -124,9 +116,15 @@ void playerDeriveBufferSize(
     [self _setupMagicCookie];
     [self _setupAQBuffers];
     [self _setupPlayGain];
+    [self _initAudioLock];
 }
 
 - (void)_setupAudioFileURL {
+    if (!_filePath ||! _filePath.length) {
+        self.playWith = PlayWithMemory;
+        _aqData.mDataFormat = _streamBasicDesc;
+        return;
+    }
     
     const char *filePath = [_filePath UTF8String];
     CFURLRef audioFileURL = CFURLCreateFromFileSystemRepresentation(NULL, (const UInt8 *)filePath, strlen(filePath), false);
@@ -139,35 +137,43 @@ void playerDeriveBufferSize(
 }
 
 - (void)_setupAudioQueue {
-    AudioQueueNewOutput(&_aqData.mDataFormat, outputBufferCallback, &_aqData, CFRunLoopGetCurrent(), kCFRunLoopCommonModes, 0, &_aqData.mQueue);
+    AudioQueueNewOutput(&_aqData.mDataFormat, outputBufferCallback, (__bridge void*)self, CFRunLoopGetCurrent(), kCFRunLoopCommonModes, 0, &_aqData.mQueue);
 }
 
 - (void)_setupBuffers {
-    //Setting playback audio queue buffer size and number of packets to read
-    UInt32 maxPacketSize;
-    UInt32 propertySize = sizeof(maxPacketSize);
     
-    AudioFileGetProperty(_aqData.mAudioFile, kAudioFilePropertyPacketSizeUpperBound, &propertySize, &maxPacketSize);
-    playerDeriveBufferSize(_aqData.mDataFormat, maxPacketSize, 0.5, &_aqData.bufferByteSize, &_aqData.mNumPacketsToRead);
+        //Setting playback audio queue buffer size and number of packets to read
+        UInt32 maxPacketSize;
+        UInt32 propertySize = sizeof(maxPacketSize);
+        if (self.playWith == PlayWithFile) {
+            AudioFileGetProperty(_aqData.mAudioFile, kAudioFilePropertyPacketSizeUpperBound, &propertySize, &maxPacketSize);
+        }
+        else {
+            maxPacketSize = 2;
+        }
     
-    //Allocating memory for a packet descriptions array
-    bool isFormatVBR = (
-        _aqData.mDataFormat.mBytesPerPacket == 0 ||
-                        _aqData.mDataFormat.mFramesPerPacket == 0
-                        );
-    if (isFormatVBR) {
-        _aqData.mPacketDesc = (AudioStreamPacketDescription*)malloc(_aqData.mNumPacketsToRead * sizeof(AudioStreamPacketDescription));
-    }
-    else {
-        _aqData.mPacketDesc = NULL;
-    }
+        playerDeriveBufferSize(_aqData.mDataFormat, maxPacketSize, 0.02, &_aqData.bufferByteSize, &_aqData.mNumPacketsToRead);
+        
+        //Allocating memory for a packet descriptions array
+        bool isFormatVBR = (
+            _aqData.mDataFormat.mBytesPerPacket == 0 ||
+                            _aqData.mDataFormat.mFramesPerPacket == 0
+                            );
+        if (isFormatVBR) {
+            _aqData.mPacketDesc = (AudioStreamPacketDescription*)malloc(_aqData.mNumPacketsToRead * sizeof(AudioStreamPacketDescription));
+        }
+        else {
+            _aqData.mPacketDesc = NULL;
+        }
 }
 
 - (void)_setupMagicCookie {
+    if (self.playWith == PlayWithMemory) {
+        return;
+    }
     UInt32 cookieSize = sizeof(UInt32);
     
-    OSStatus couldNotGetproperty = AudioFileGetPropertyInfo(_aqData.mAudioFile, kAudioFilePropertyMagicCookieData, &cookieSize, NULL);
-    //CheckError(couldNotGetproperty, "AudioFileGetPropertyInfo error");
+    AudioFileGetPropertyInfo(_aqData.mAudioFile, kAudioFilePropertyMagicCookieData, &cookieSize, NULL);
     if (cookieSize) {
         char* magicCookie = (char*)malloc(cookieSize);
         AudioFileGetProperty(_aqData.mAudioFile, kAudioFilePropertyMagicCookieData, &cookieSize, magicCookie);
@@ -180,7 +186,7 @@ void playerDeriveBufferSize(
     
     for (int i = 0; i < kNumberBuffers; ++i) {
         AudioQueueAllocateBuffer(_aqData.mQueue, _aqData.bufferByteSize, &_aqData.mBuffers[i]);
-        outputBufferCallback(&_aqData, _aqData.mQueue, _aqData.mBuffers[i]);
+        outputBufferCallback((__bridge void*)self, _aqData.mQueue, _aqData.mBuffers[i]);
     }
 }
 
@@ -190,24 +196,109 @@ void playerDeriveBufferSize(
     AudioQueueSetParameter(_aqData.mQueue, kAudioQueueParam_Volume, gain);
 }
 
+- (void)_initAudioLock {
+    _aqLock = [[NSLock alloc] init];
+    _curBufferNo = 0;
+}
+
 - (void) startPlay {
     _aqData.mIsRunning = true;
+    
+    AVAudioSession *session = [AVAudioSession sharedInstance];
+    if (!session) {
+        NSLog(@"sharedInstance error");
+    }
+    else {
+        NSError *error = nil;
+        [session setCategory:AVAudioSessionCategoryPlayback error:&error];
+        if (error) {
+            NSLog(@"setCategoryError: %@", error.localizedDescription);
+        }
+        else {
+            [session setActive:YES error:&error];
+            if (error) {
+                NSLog(@"setActive: %@", error.localizedDescription);
+            }
+        }
+    }
+    
     
     OSStatus status = AudioQueueStart(_aqData.mQueue, NULL);
     CheckError(status, "AudioQueueStart error");
     
     do {
         CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.25, false);
+        if (self.playWith == PlayWithMemory) {
+            [_aqLock lock];
+            if (self.playWith == PlayWithMemory) {
+                for( int i = 0; i < kNumberBuffers; i++) {
+                    outputBufferCallback((__bridge void*)self, _aqData.mQueue, _aqData.mBuffers[i++]);
+                    if (_curBufferNo >= kNumberBuffers) {
+                        _curBufferNo = 0;
+                    }
+                }
+            }
+            [_aqLock unlock];
+        }
     }while (_aqData.mIsRunning);
     
     CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1, false);
 }
 
 - (void) stopPlay {
-    AudioQueueStop(_aqData.mQueue, true);
+    _aqData.mIsRunning = NO;
     
-    AudioFileClose(_aqData.mAudioFile);
-    free(_aqData.mPacketDesc);
+    AudioQueueStop(_aqData.mQueue, true);
+    if (self.playWith == PlayWithFile) {
+        AudioFileClose(_aqData.mAudioFile);
+    }
+    if (_aqData.mPacketDesc) {
+        free(_aqData.mPacketDesc);
+    }
 }
+
+void outputBufferCallback(
+                          void *inUserData,
+                          AudioQueueRef inAQ,
+                          AudioQueueBufferRef inBuffer){
+    
+    AQPlayer *player = (__bridge AQPlayer *)(inUserData);
+    AQPlayerState *pAqData = &(player->_aqData);
+    if (pAqData->mIsRunning == 0) {
+        return;
+    }
+    UInt32 numPackets = pAqData->mNumPacketsToRead;
+    UInt32 bufferSize = pAqData->bufferByteSize;
+    
+    if (player.playWith == PlayWithMemory) {
+        if (player.delegate && [player.delegate respondsToSelector:@selector(playWithAudioBuffer:)]) {
+            [player.delegate playWithAudioBuffer: inBuffer];
+        }
+    }
+    else {
+        AudioFileReadPacketData(pAqData->mAudioFile,
+                            false,
+                            &bufferSize,
+                            pAqData->mPacketDesc,
+                            pAqData->mCurrentPacket,
+                            &numPackets,
+                            inBuffer->mAudioData);
+        if (numPackets == 0) {
+            AudioQueueStop(pAqData->mQueue, false);
+            pAqData->mIsRunning = false;
+        }
+        inBuffer->mAudioDataByteSize = bufferSize;
+    }
+    if (inBuffer->mAudioDataByteSize == 0) {
+        return;
+    }
+    
+    AudioQueueEnqueueBuffer(pAqData->mQueue,
+                            inBuffer,
+                            pAqData->mPacketDesc ? numPackets : 0,
+                            pAqData->mPacketDesc);
+    pAqData->mCurrentPacket += numPackets;
+}
+
 
 @end
