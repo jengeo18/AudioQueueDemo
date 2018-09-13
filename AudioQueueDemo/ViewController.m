@@ -10,7 +10,8 @@
 #import "AQRecorder.h"
 #import "AQPlayer.h"
 #import "AQ_Header.h"
-#import "AudioDataQueue.h"
+#import "AQDataCache.h"
+
 
 @interface ViewController () <AQRecorderDelegate, AQPlayerDelegate>{
     dispatch_queue_t _playAudioQueue;
@@ -21,7 +22,7 @@
 @property (nonatomic, strong) UIButton *startPCMRecordBtn;
 @property (nonatomic, strong) UIButton *startPCMPlayBtn;
 @property (nonatomic, strong) NSString *filePath;
-@property (nonatomic, strong) AudioDataQueue *dataQueue;
+@property (nonatomic, strong) AQDataCache *audioCache;
 
 @end
 
@@ -77,7 +78,7 @@
 
 - (void)_setupDatas {
     _playAudioQueue = dispatch_queue_create("top.jengeo.app.AudioQueueDemo.AudioPlay", DISPATCH_QUEUE_SERIAL);
-    _dataQueue = [[AudioDataQueue alloc] init];
+    _audioCache = [[AQDataCache alloc] init];
 }
 
 - (void)_startRecordPCM {
@@ -102,10 +103,10 @@
         dispatch_async(_playAudioQueue, ^{
             [self.player startPlay];
         });
+       
         _startPCMPlayBtn.selected = YES;
     }
 }
-
 
 #pragma mark - getters
 
@@ -119,7 +120,8 @@
 
 - (AQRecorder *)recorder {
     if (!_recorder) {
-        _recorder = [[AQRecorder alloc] initWithFilePath:defaultFilePath];
+        //_recorder = [[AQRecorder alloc] initWithFilePath:defaultFilePath];
+        _recorder = [[AQRecorder alloc] init];
         _recorder.delegate = self;
     }
     
@@ -128,7 +130,8 @@
 
 - (AQPlayer*)player {
     if (!_player) {
-        _player = [[AQPlayer alloc] initWithFilePath:defaultFilePath];
+       //_player = [[AQPlayer alloc] initWithFilePath:defaultFilePath];
+        _player = [[AQPlayer alloc] init];
         _player.delegate = self;
     }
     return _player;
@@ -137,19 +140,22 @@
 #pragma mark - AQRecorderDelegate
 
 - (void)recordAudioData: (NSData*)data {
-    [_dataQueue pushData:data];
+    [_audioCache pushData:data];
 }
 
 
 - (void)playWithAudioBuffer: (AudioQueueBufferRef)buffer {
-    int len = 640;
+    NSData *data = [_audioCache popData];
     memset(buffer->mAudioData, 0, buffer->mAudioDataByteSize);
-    buffer->mAudioDataByteSize = 0;
-    NSData *data = [_dataQueue popDataLength: len];
-    if (data) {
+    if (data && data.length ) {
+        UInt32 len = (UInt32)data.length;
         buffer->mAudioDataByteSize = len;
         memcpy(buffer->mAudioData, data.bytes, len);
     }
+    else {
+        buffer->mAudioDataByteSize = 0;
+    }
 }
+
 
 @end

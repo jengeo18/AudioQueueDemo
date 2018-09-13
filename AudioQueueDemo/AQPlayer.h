@@ -48,4 +48,6 @@
  */
 - (void) stopPlay;
 
+- (void)playAudioData: (NSData*)data;
+
 @end

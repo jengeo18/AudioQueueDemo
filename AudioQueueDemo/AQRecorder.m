@@ -183,7 +183,7 @@ OSStatus setMagicCookieForFile(
     }
     else {
         NSError *error = nil;
-        [session setCategory:AVAudioSessionCategoryPlayAndRecord error:&error];
+        [session setCategory:AVAudioSessionCategoryRecord error:&error];
         if (error) {
             NSLog(@"setCategoryError: %@", error.localizedDescription);
         }
@@ -221,8 +221,6 @@ void audioInputBufferCallback(
     if (inNumberPacketDescriptions == 0 && aqData->mDataFormat.mBytesPerFrame != 0) {
         inNumberPacketDescriptions = inBuffer->mAudioDataByteSize/aqData->mDataFormat.mBytesPerPacket;
     }
-    
-    NSLog(@"---------%d", inBuffer->mAudioDataByteSize);
     
     //Writing an audio queue buffer to disk
     if (recorder.recordTo == RecordToMemory) {

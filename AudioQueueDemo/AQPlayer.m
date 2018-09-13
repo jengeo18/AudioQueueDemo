@@ -8,6 +8,7 @@
 
 #import "AQPlayer.h"
 #import "AQ_Header.h"
+#import <AVFoundation/AVFoundation.h>
 
 static const int kNumberBuffers = 3;
 
@@ -203,25 +204,42 @@ void playerDeriveBufferSize(
 - (void) startPlay {
     _aqData.mIsRunning = true;
     
+    AVAudioSession *session = [AVAudioSession sharedInstance];
+    if (!session) {
+        NSLog(@"sharedInstance error");
+    }
+    else {
+        NSError *error = nil;
+        [session setCategory:AVAudioSessionCategoryPlayback error:&error];
+        if (error) {
+            NSLog(@"setCategoryError: %@", error.localizedDescription);
+        }
+        else {
+            [session setActive:YES error:&error];
+            if (error) {
+                NSLog(@"setActive: %@", error.localizedDescription);
+            }
+        }
+    }
+    
+    
     OSStatus status = AudioQueueStart(_aqData.mQueue, NULL);
     CheckError(status, "AudioQueueStart error");
     
     do {
-        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.5, false);
-        /*if (self.playWith == PlayWithMemory) {
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.25, false);
+        if (self.playWith == PlayWithMemory) {
             [_aqLock lock];
             if (self.playWith == PlayWithMemory) {
-                NSLog(@"_curBufferNo: %d", _curBufferNo);
-                //outputBufferCallback((__bridge void*)self, _aqData.mQueue, _aqData.mBuffers[_curBufferNo++]);
-                
-                AudioQueueEnqueueBuffer(_aqData.mQueue, _aqData.mBuffers[_curBufferNo++], 0, NULL);
-                
-                if (_curBufferNo >= kNumberBuffers) {
-                    _curBufferNo = 0;
+                for( int i = 0; i < kNumberBuffers; i++) {
+                    outputBufferCallback((__bridge void*)self, _aqData.mQueue, _aqData.mBuffers[i++]);
+                    if (_curBufferNo >= kNumberBuffers) {
+                        _curBufferNo = 0;
+                    }
                 }
             }
             [_aqLock unlock];
-        }*/
+        }
     }while (_aqData.mIsRunning);
     
     CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1, false);
@@ -277,7 +295,7 @@ void outputBufferCallback(
     
     AudioQueueEnqueueBuffer(pAqData->mQueue,
                             inBuffer,
-                            pAqData->mPacketDesc ? numPackets : 0 ,
+                            pAqData->mPacketDesc ? numPackets : 0,
                             pAqData->mPacketDesc);
     pAqData->mCurrentPacket += numPackets;
 }
