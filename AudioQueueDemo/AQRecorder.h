@@ -9,24 +9,33 @@
 #import <Foundation/Foundation.h>
 #import <AudioToolbox/AudioToolbox.h>
 
+
+@protocol AQRecorderDelegate<NSObject>
+
+- (void)recordAudioData: (NSData*)data;
+
+@end
+
 @interface AQRecorder : NSObject
+
+@property (nonatomic, weak) id<AQRecorderDelegate> delegate;
 
 /**
  构造方法
 
  @param streamBasicDesc 录制音频的参数设置（采样率，声道数，声道位数等）
- @param filePath  目标文件路径
  @return 实例
  */
-- (instancetype) initWithRecordDataFormat: (AudioStreamBasicDescription)streamBasicDesc withFilePath:(NSString *)filePath;
+- (instancetype) initWithRecordDataFormat: (AudioStreamBasicDescription)streamBasicDesc;
+
 
 /**
- 音频的参数设置
+ 构造方法
 
- @param streamBasicDesc 录制音频的参数设置（采样率，声道数，声道位数等）
- @param filePath 目标文件路径
+ @param filePath  录制到文件路径
+ @return recorder实例
  */
-- (void)setStreamBasicDesc:(AudioStreamBasicDescription)streamBasicDesc withFilePath: (NSString*)filePath;
+- (instancetype) initWithFilePath: (NSString*)filePath;
 
 
 /**
@@ -38,7 +47,6 @@
  结束录制
  */
 - (void)stopRecord;
-
 
 
 

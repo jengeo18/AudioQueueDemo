@@ -7,20 +7,36 @@
 //
 
 #import <Foundation/Foundation.h>
+#import <AudioToolbox/AudioToolbox.h>
+
+@protocol AQPlayerDelegate<NSObject>
+
+- (void)playWithAudioBuffer: (AudioQueueBufferRef)buffer;
+
+@end
+
 
 @interface AQPlayer : NSObject
 
-//播放文件路径
-@property (nonatomic, copy) NSString *filePath;
-
+@property (nonatomic, weak) id<AQPlayerDelegate> delegate;
 
 /**
  实例方法
 
  @param filePath 播放文件路径
- @return 实例
+ @return player实例
  */
+
 - (instancetype) initWithFilePath: (NSString*)filePath;
+
+
+/**
+ 实例方法
+
+ @param streamBasicDesc 播放文件格式
+ @return player实例
+ */
+- (instancetype) initWithDataFormat: (AudioStreamBasicDescription)streamBasicDesc;
 
 /**
  开始播放

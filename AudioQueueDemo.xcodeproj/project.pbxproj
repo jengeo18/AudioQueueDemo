@@ -16,6 +16,7 @@
 		CF87E88A2147BA4A005DC708 /* AQRecorder.m in Sources */ = {isa = PBXBuildFile; fileRef = CF87E8892147BA4A005DC708 /* AQRecorder.m */; };
 		CF87E88D2147CE67005DC708 /* AQPlayer.m in Sources */ = {isa = PBXBuildFile; fileRef = CF87E88C2147CE67005DC708 /* AQPlayer.m */; };
 		CF87E8902148EE13005DC708 /* test.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = CF87E88F2148EE13005DC708 /* test.mp3 */; };
+		CF87E893214914F9005DC708 /* AudioDataQueue.m in Sources */ = {isa = PBXBuildFile; fileRef = CF87E891214914F9005DC708 /* AudioDataQueue.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -35,6 +36,8 @@
 		CF87E88C2147CE67005DC708 /* AQPlayer.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AQPlayer.m; sourceTree = "<group>"; };
 		CF87E88E2148BBE8005DC708 /* AQ_Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AQ_Header.h; sourceTree = "<group>"; };
 		CF87E88F2148EE13005DC708 /* test.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = test.mp3; sourceTree = "<group>"; };
+		CF87E891214914F9005DC708 /* AudioDataQueue.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = AudioDataQueue.m; sourceTree = "<group>"; };
+		CF87E892214914F9005DC708 /* AudioDataQueue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioDataQueue.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -76,6 +79,8 @@
 				CF87E88B2147CE67005DC708 /* AQPlayer.h */,
 				CF87E88C2147CE67005DC708 /* AQPlayer.m */,
 				CF87E88E2148BBE8005DC708 /* AQ_Header.h */,
+				CF87E892214914F9005DC708 /* AudioDataQueue.h */,
+				CF87E891214914F9005DC708 /* AudioDataQueue.m */,
 				CF87E88F2148EE13005DC708 /* test.mp3 */,
 				CF87E8782147AF9C005DC708 /* Main.storyboard */,
 				CF87E87B2147AF9D005DC708 /* Assets.xcassets */,
@@ -159,6 +164,7 @@
 			files = (
 				CF87E8772147AF9C005DC708 /* ViewController.m in Sources */,
 				CF87E88D2147CE67005DC708 /* AQPlayer.m in Sources */,
+				CF87E893214914F9005DC708 /* AudioDataQueue.m in Sources */,
 				CF87E8822147AF9D005DC708 /* main.m in Sources */,
 				CF87E8742147AF9C005DC708 /* AppDelegate.m in Sources */,
 				CF87E88A2147BA4A005DC708 /* AQRecorder.m in Sources */,

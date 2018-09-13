@@ -10,7 +10,13 @@
 #import "AQ_Header.h"
 #import <AVFoundation/AVFoundation.h>
 
+
 static const int kNumberBuffers = 3;
+
+typedef enum RecordToType {
+    RecordToFile,
+    RecordToMemory
+} RecordToType ;
 
 typedef struct AQRecorderState {
     AudioStreamBasicDescription mDataFormat;
@@ -41,7 +47,7 @@ void deriveBufferSize(
                               &maxPacketSize,
                               &maxVBRPacketSize);
     }
-    Float64 numBytesForTime = ASBDDescription.mSampleRate * maxPacketSize *seconds;
+    Float64 numBytesForTime = ASBDDescription.mSampleRate * maxPacketSize * seconds;
     *outBufferSize = (UInt32)(numBytesForTime < maxBufferSize ? numBytesForTime : maxBufferSize );
 }
 
@@ -66,74 +72,56 @@ OSStatus setMagicCookieForFile(
     
 }
 
-void audioInputBufferCallback(
-                                     void * __nullable               inUserData,
-                                     AudioQueueRef                   inAQ,
-                                     AudioQueueBufferRef             inBuffer,
-                                     const AudioTimeStamp *          inStartTime,
-                                     UInt32                          inNumberPacketDescriptions,
-                                     const AudioStreamPacketDescription * __nullable inPacketDescs) {
-    
-    struct AQRecorderState *pAqData = inUserData;
-    if (inNumberPacketDescriptions == 0 && pAqData->mDataFormat.mBytesPerFrame != 0) {
-        inNumberPacketDescriptions = inBuffer->mAudioDataByteSize/pAqData->mDataFormat.mBytesPerPacket;
-    }
-    
-    NSLog(@"---------%d", inBuffer->mAudioDataByteSize);
-    
-    //Writing an audio queue buffer to disk
-    if(AudioFileWritePackets(
-                             pAqData->mAudioFile,
-                             false,
-                             inBuffer->mAudioDataByteSize,
-                             inPacketDescs,
-                             pAqData->mCurrentPacket,
-                             &inNumberPacketDescriptions,
-                             inBuffer->mAudioData) == noErr) {
-        pAqData->mCurrentPacket += inNumberPacketDescriptions;
-    }
-    
-    if (pAqData->mIsRunning == 0) {
-        return;
-    }
-    //Enqueuing an audio queue buffer after writing to disk
-    AudioQueueEnqueueBuffer(pAqData->mQueue,
-                            inBuffer,
-                            0,
-                            NULL);
-}
+
 
 @interface AQRecorder()
 
 @property (nonatomic, assign)AQRecorderState aqData;
 @property (nonatomic, copy) NSString *recordFileDestPath;
 @property (nonatomic, assign) AudioStreamBasicDescription streamBasicDesc;
+@property (nonatomic, assign) RecordToType recordTo;
 
 @end
 
 @implementation AQRecorder
 
 - (instancetype) init {
-    if (self = [super init]) {
-    }
-    return self;
+    return [self initWithRecordDataFormat:[self _getDefaultDesc]];
 }
 
-- (instancetype) initWithRecordDataFormat: (AudioStreamBasicDescription)streamBasicDesc withFilePath:(NSString *)filePath {
+- (instancetype) initWithRecordDataFormat: (AudioStreamBasicDescription)streamBasicDesc {
     if (self = [super init]) {
         _streamBasicDesc = streamBasicDesc;
-        _recordFileDestPath = filePath;
+        self.recordTo = RecordToMemory;
         [self _doSetup];
     }
     
     return self;
 }
 
-- (void)setStreamBasicDesc:(AudioStreamBasicDescription)streamBasicDesc withFilePath: (NSString*)filePath {
-    _streamBasicDesc = streamBasicDesc;
-    _recordFileDestPath = filePath;
-    [self _doSetup];
+- (instancetype) initWithFilePath: (NSString*)filePath {
+    if (self = [super init]) {
+        _recordFileDestPath = filePath;
+        _streamBasicDesc = [self _getDefaultDesc];
+        self.recordTo = RecordToFile;
+        [self _doSetup];
+    }
+    return self;
 }
+
+- (AudioStreamBasicDescription)_getDefaultDesc {
+    AudioStreamBasicDescription defaultDesc;
+    defaultDesc.mFormatID = kAudioFormatLinearPCM;
+    defaultDesc.mSampleRate = 16000;
+    defaultDesc.mChannelsPerFrame = 1;
+    defaultDesc.mBitsPerChannel = 16;
+    defaultDesc.mBytesPerPacket = defaultDesc.mChannelsPerFrame * defaultDesc.mBitsPerChannel / 8;
+    defaultDesc.mBytesPerFrame = defaultDesc.mBytesPerPacket;
+    defaultDesc.mFramesPerPacket = 1;
+    defaultDesc.mFormatFlags = kLinearPCMFormatFlagIsBigEndian | kLinearPCMFormatFlagIsSignedInteger | kLinearPCMFormatFlagIsPacked;
+    return defaultDesc;
+}
+
 
 - (void) _doSetup {
     [self _setupNewInput];
@@ -143,13 +131,15 @@ void audioInputBufferCallback(
 }
 
 - (void) _setupNewInput {
-    NSAssert(_recordFileDestPath, @"_recordFileDestPath nil");
     _aqData.mDataFormat = _streamBasicDesc;
-    OSStatus status = AudioQueueNewInput(&_aqData.mDataFormat, audioInputBufferCallback, &_aqData, NULL, kCFRunLoopCommonModes, 0, &_aqData.mQueue);
+    OSStatus status = AudioQueueNewInput(&_aqData.mDataFormat, audioInputBufferCallback, (__bridge void*)self, NULL, kCFRunLoopCommonModes, 0, &_aqData.mQueue);
     CheckError(status, "AudioQueueNewInput error");
 }
 
 - (void)_setupOutputAudioFile {
+    if (self.recordTo == RecordToMemory) {
+        return;
+    }
     const char *cFilePath = _recordFileDestPath.UTF8String;
     CFURLRef audioFileURL = CFURLCreateFromFileSystemRepresentation(NULL, (const uint8_t *)cFilePath, strlen(cFilePath), false);
     AudioFileTypeID fileType = kAudioFileAIFFType;
@@ -162,13 +152,13 @@ void audioInputBufferCallback(
 }
 
 - (void)_setupMagicCookies {
+    if (self.recordTo == RecordToMemory) {
+        return;
+    }
     setMagicCookieForFile(_aqData.mQueue, _aqData.mAudioFile);
 }
 
 
-/**
- 默认20ms数据，采样率16k单通道双字节pcm格式每帧大概640byte数据（小于或等于）
- */
 - (void) _setupAQBuffer {
     deriveBufferSize(_aqData.mQueue,
                      _aqData.mDataFormat,
@@ -216,6 +206,52 @@ void audioInputBufferCallback(
     
     AudioQueueDispose(_aqData.mQueue, true);
     AudioFileClose(_aqData.mAudioFile);
+}
+
+void audioInputBufferCallback(
+                              void * __nullable               inUserData,
+                              AudioQueueRef                   inAQ,
+                              AudioQueueBufferRef             inBuffer,
+                              const AudioTimeStamp *          inStartTime,
+                              UInt32                          inNumberPacketDescriptions,
+                              const AudioStreamPacketDescription * __nullable inPacketDescs) {
+    
+    AQRecorder *recorder = (__bridge AQRecorder *)(inUserData);
+    AQRecorderState *aqData = &recorder->_aqData;
+    if (inNumberPacketDescriptions == 0 && aqData->mDataFormat.mBytesPerFrame != 0) {
+        inNumberPacketDescriptions = inBuffer->mAudioDataByteSize/aqData->mDataFormat.mBytesPerPacket;
+    }
+    
+    NSLog(@"---------%d", inBuffer->mAudioDataByteSize);
+    
+    //Writing an audio queue buffer to disk
+    if (recorder.recordTo == RecordToMemory) {
+        if (recorder.delegate && [recorder.delegate respondsToSelector:@selector(recordAudioData:)]) {
+            NSData *audioData = [[NSData alloc] initWithBytes:inBuffer->mAudioData length:inBuffer->mAudioDataByteSize];
+            [recorder.delegate recordAudioData:audioData];
+        }
+    }
+    else {
+        if(AudioFileWritePackets(
+                                 aqData->mAudioFile,
+                                 false,
+                                 inBuffer->mAudioDataByteSize,
+                                 inPacketDescs,
+                                 aqData->mCurrentPacket,
+                                 &inNumberPacketDescriptions,
+                                 inBuffer->mAudioData) == noErr) {
+            aqData->mCurrentPacket += inNumberPacketDescriptions;
+        }
+    }
+    
+    if (aqData->mIsRunning == 0) {
+        return;
+    }
+    //Enqueuing an audio queue buffer after writing to disk
+    AudioQueueEnqueueBuffer(aqData->mQueue,
+                            inBuffer,
+                            0,
+                            NULL);
 }
 
 @end

@@ -9,6 +9,8 @@
 #ifndef AQ_Header_h
 #define AQ_Header_h
 
+#define defaultFilePath  ([NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject stringByAppendingPathComponent:@"123.aiff"])
+
 static void CheckError(OSStatus error, const char *operation)
 {
     if (error == noErr) return;
