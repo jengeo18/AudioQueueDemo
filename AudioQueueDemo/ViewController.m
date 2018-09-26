@@ -143,7 +143,6 @@
     [_audioCache pushData:data];
 }
 
-
 - (void)playWithAudioBuffer: (AudioQueueBufferRef)buffer {
     NSData *data = [_audioCache popData];
     memset(buffer->mAudioData, 0, buffer->mAudioDataByteSize);

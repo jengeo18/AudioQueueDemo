@@ -81,10 +81,10 @@ void playerDeriveBufferSize(
     defaultDesc.mSampleRate = 16000;
     defaultDesc.mChannelsPerFrame = 1;
     defaultDesc.mBitsPerChannel = 16;
-    defaultDesc.mBytesPerPacket = defaultDesc.mChannelsPerFrame * defaultDesc.mBitsPerChannel / 8;
-    defaultDesc.mBytesPerFrame = defaultDesc.mBytesPerPacket;
     defaultDesc.mFramesPerPacket = 1;
-    defaultDesc.mFormatFlags = kLinearPCMFormatFlagIsBigEndian | kLinearPCMFormatFlagIsSignedInteger | kLinearPCMFormatFlagIsPacked;
+    defaultDesc.mBytesPerFrame = defaultDesc.mChannelsPerFrame * defaultDesc.mBitsPerChannel / 8;
+    defaultDesc.mBytesPerPacket = defaultDesc.mBytesPerFrame * defaultDesc.mFramesPerPacket;
+    defaultDesc.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsNonInterleaved | kAudioFormatFlagIsPacked;
     return [self initWithDataFormat: defaultDesc];
 }
 
@@ -227,7 +227,7 @@ void playerDeriveBufferSize(
     CheckError(status, "AudioQueueStart error");
     
     do {
-        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.25, false);
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.65, false);
         if (self.playWith == PlayWithMemory) {
             [_aqLock lock];
             if (self.playWith == PlayWithMemory) {

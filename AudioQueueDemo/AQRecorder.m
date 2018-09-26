@@ -115,10 +115,10 @@ OSStatus setMagicCookieForFile(
     defaultDesc.mSampleRate = 16000;
     defaultDesc.mChannelsPerFrame = 1;
     defaultDesc.mBitsPerChannel = 16;
-    defaultDesc.mBytesPerPacket = defaultDesc.mChannelsPerFrame * defaultDesc.mBitsPerChannel / 8;
-    defaultDesc.mBytesPerFrame = defaultDesc.mBytesPerPacket;
     defaultDesc.mFramesPerPacket = 1;
-    defaultDesc.mFormatFlags = kLinearPCMFormatFlagIsBigEndian | kLinearPCMFormatFlagIsSignedInteger | kLinearPCMFormatFlagIsPacked;
+    defaultDesc.mBytesPerFrame = defaultDesc.mChannelsPerFrame * defaultDesc.mBitsPerChannel / 8;
+    defaultDesc.mBytesPerPacket = defaultDesc.mBytesPerFrame * defaultDesc.mFramesPerPacket;
+    defaultDesc.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsNonInterleaved | kAudioFormatFlagIsPacked;
     return defaultDesc;
 }
 
@@ -226,6 +226,7 @@ void audioInputBufferCallback(
     if (recorder.recordTo == RecordToMemory) {
         if (recorder.delegate && [recorder.delegate respondsToSelector:@selector(recordAudioData:)]) {
             NSData *audioData = [[NSData alloc] initWithBytes:inBuffer->mAudioData length:inBuffer->mAudioDataByteSize];
+            NSLog(@"-----数据大小：%ld", audioData.length);
             [recorder.delegate recordAudioData:audioData];
         }
     }

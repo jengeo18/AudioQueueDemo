@@ -11,6 +11,7 @@
 @implementation AQDataCache {
     int _size;
     NSMutableArray *_bufArray;
+    NSLock *_audioLock;
 }
 
 - (instancetype)init
@@ -22,22 +23,30 @@
     if (self = [super init]) {
         _size = size;
         _bufArray = @[].mutableCopy;
+        _audioLock = [[NSLock alloc] init];
     }
     return self;
 }
 
 - (void)pushData: (NSData*)data {
+    [_audioLock lock];
     if (_bufArray.count == _size) {
         [_bufArray removeObjectAtIndex:0];
     }
     [_bufArray addObject:data];
-    
+    [_audioLock unlock];
 }
 - (NSData*)popData {
+    [_audioLock lock];
+    if (_bufArray.count == 0) {
+        [_audioLock unlock];
+        return nil;
+    }
     NSData *d = _bufArray.firstObject;
     if (_bufArray.count) {
         [_bufArray removeObjectAtIndex:0];
     }
+    [_audioLock unlock];
     return d;
 }
 
